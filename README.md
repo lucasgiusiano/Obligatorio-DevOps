@@ -1,124 +1,95 @@
-🧭 Estrategia de control de versiones – GitFlow
+## Estrategia de Control de Versiones: Git Flow
 
-Este documento describe la estrategia de ramificación, flujo de trabajo y convenciones que seguimos en el proyecto StockWiz DevOps Transformation, basada en el modelo GitFlow.
-El objetivo es asegurar un ciclo de desarrollo ordenado, colaborativo y con despliegues controlados en múltiples ambientes (Dev, Test, Prod).
+Para el desarrollo de este proyecto se utiliza la **estrategia Git Flow**, una metodología ampliamente adoptada que facilita el trabajo colaborativo y el versionado ordenado del código.  
+Esta estrategia permite desarrollar nuevas funcionalidades de forma aislada, mantener un flujo claro de integración y generar versiones estables y trazables.
 
-📂 Estructura de ramas
+---
 
-La estrategia GitFlow define cinco tipos principales de ramas, cada una con un propósito claro:
+### 🌿 Ramas principales
 
-Tipo de rama	Convención	Propósito
-main	main	Contiene el código estable y desplegado en producción.
-develop	develop	Código integrado y probado, listo para el próximo release.
-feature	feature/<nombre>	Desarrollo de nuevas funcionalidades o mejoras.
-release	release/<versión>	Preparación de una nueva versión antes del despliegue a producción.
-hotfix	hotfix/<nombre>	Correcciones urgentes directamente sobre producción.
-🧩 Flujo de trabajo diario
+- **`main`**  
+  Contiene el código en estado **estable y listo para producción**.  
+  Cada versión liberada se etiqueta con un tag (`v1.0.0`, `v1.1.0`, etc.).
 
-Crear una nueva rama de feature
+- **`develop`**  
+  Contiene el código en estado **integrado y en pruebas**.  
+  Todas las nuevas funcionalidades se fusionan aquí antes de ser promovidas a producción.
 
-git checkout develop
-git pull origin develop
-git checkout -b feature/<nombre-feature>
+---
 
+### 🌱 Ramas de soporte
 
-Ejemplo:
+- **`feature/<nombre-feature>`**  
+  Se crean desde `develop` para desarrollar nuevas funcionalidades o mejoras.  
+  Una vez completada la tarea, se abre un **Pull Request (PR)** hacia `develop`.  
+  Ejemplo:  
+  ```bash
+  git checkout develop
+  git pull
+  git checkout -b feature/agregar-autenticacion
 
-git checkout -b feature/agregar-tests-login
+  🔁 Flujo de trabajo general
 
+Crear una rama feature desde develop.
 
-Desarrollar la funcionalidad
+Desarrollar la funcionalidad y hacer commits descriptivos.
 
-Commits frecuentes y descriptivos:
+Abrir un Pull Request hacia develop y solicitar revisión de código.
 
-git commit -m "feat: agrega validación de usuario en login"
-git commit -m "test: añade pruebas unitarias al login service"
+Una vez aprobado el PR, fusionar (merge) y eliminar la rama feature.
 
+Cuando se completa un conjunto de funcionalidades, crear una rama release desde develop.
 
-Abrir un Pull Request (PR)
+Realizar pruebas y ajustes; luego fusionar en main y etiquetar la versión.
 
-Desde feature/<nombre> hacia develop.
+Si se detectan errores críticos en producción, crear un hotfix desde main.
 
-Solicitar revisión a otro miembro del equipo.
+🧩 Pull Requests (PRs) y Revisiones
 
-El PR debe incluir:
+Cada PR debe:
 
-Descripción breve del cambio.
+Estar asociado a una tarea del tablero (Kanban/Scrum).
 
-Issue/tarea relacionada del tablero Kanban.
+Incluir una descripción clara de los cambios realizados.
 
-Checklist de verificación (tests, lint, build).
+Pasar los tests automáticos del pipeline CI/CD antes del merge.
 
-Merge aprobado a develop
-
-Solo se hace merge tras aprobación de al menos 1 reviewer.
-
-El merge debe ser tipo squash o rebase para mantener el historial limpio.
-
-🚀 Ciclo de releases
-
-Preparar un release
-
-git checkout develop
-git pull origin develop
-git checkout -b release/v1.2.0
-
-
-Actualizar versión en package.json, CHANGELOG.md o documentación.
-
-Realizar pruebas integrales en ambiente de Test.
-
-Merge de release
-
-Si todo está correcto:
-
-git checkout main
-git merge --no-ff release/v1.2.0
-git tag -a v1.2.0 -m "Release versión 1.2.0"
-git checkout develop
-git merge --no-ff release/v1.2.0
-git push origin main develop --tags
-
-🧯 Correcciones urgentes (Hotfix)
-
-Crear una rama desde main:
-
-git checkout main
-git checkout -b hotfix/fix-error-pago
-
-
-Aplicar el cambio, probar y hacer merge:
-
-git commit -m "fix: corrige error en módulo de pagos"
-git checkout main
-git merge --no-ff hotfix/fix-error-pago
-git tag -a v1.2.1 -m "Hotfix: corrección de pagos"
-git checkout develop
-git merge --no-ff hotfix/fix-error-pago
-git push origin main develop --tags
+Contar con al menos una revisión de código de otro integrante del equipo.
 
 🏷️ Tags y Releases
 
-Tags: identifican versiones estables listas para producción.
-Ejemplo: v1.2.0, v1.2.1.
+Cada despliegue a producción se identifica con un tag semántico:
+v<MAJOR>.<MINOR>.<PATCH> (por ejemplo: v1.3.2).
 
-Releases: se crean automáticamente o manualmente desde GitHub/GitLab, adjuntando changelog y artefactos relevantes.
+MAJOR: cambios incompatibles.
 
-🔁 Buenas prácticas
+MINOR: nuevas funcionalidades retrocompatibles.
 
-Nunca hacer commit directo en main ni develop.
+PATCH: correcciones o mejoras menores.
 
-Siempre trabajar en ramas feature/* y abrir PRs.
+Ejemplo de creación de un tag y release:
 
-Mantener los commits limpios y descriptivos.
+git checkout main
+git pull
+git tag -a v1.3.2 -m "Release versión 1.3.2 - mejora de rendimiento en checkout"
+git push origin v1.3.2
 
-Borrar ramas feature una vez mergeadas.
+📦 Recomendaciones
 
-Ejecutar los pipelines CI/CD antes de hacer merge.
+Mantener ramas cortas y bien definidas.
 
-Documentar cambios significativos en CHANGELOG.md.
+Realizar commits atómicos y descriptivos.
 
-📊 Flujo resumido
-feature/*  →  develop  →  release/*  →  main
-                ↑          ↓           ↓
-             hotfix/*  →  develop  →  main
+Sincronizar frecuentemente con develop para evitar conflictos.
+
+No realizar merges directos a main sin pasar por release o hotfix.
+
+Usar PRs como instancia de revisión y control de calidad del código.
+
+Resumen visual del flujo Git Flow:
+
+main ──────●─────────────●───────────────●──────────────▶
+             ↖ hotfix     ↖ release       ↖ release
+develop ────●──────●──────●───────────────●──────────────▶
+              ↖feature1    ↖feature2       ↖feature3
+
