@@ -105,7 +105,7 @@ Resumen visual del flujo Git Flow:
 main ──────●─────────────●───────────────●──────────────▶
              ↖ version1     ↖ version2       ↖ version3
 test ────●──────●──────●───────────────●──────────────▶
-              ↖release1    ↖release2       ↖feature3
+              ↖ release1    ↖ release2       ↖ release3
 develop ────●──────●──────●───────────────●──────────────▶
-              ↖feature1    ↖feature2       ↖feature3
+              ↖ feature1    ↖ feature2       ↖ feature3
 ```
