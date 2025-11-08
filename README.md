@@ -61,7 +61,7 @@ git checkout -b hotfix/corregir-error-pago
 
 4. Una vez aprobado el PR, fusionar (**`merge`**) y eliminar la rama **`feature`**.
 
-5. Cuando se completa un conjunto de funcionalidades, crear una rama **`release`** desde **develop``** .
+5. Cuando se completa un conjunto de funcionalidades, crear una rama **`release`** desde **`develop`** .
 
 6. Realizar pruebas y ajustes; luego fusionar en **`main`** y etiquetar la versión.
 
