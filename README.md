@@ -103,7 +103,9 @@ Resumen visual del flujo Git Flow:
 
 ```bash
 main ──────●─────────────●───────────────●──────────────▶
-             ↖ hotfix     ↖ release       ↖ release
+             ↖ version1     ↖ version2       ↖ version3
+test ────●──────●──────●───────────────●──────────────▶
+              ↖release1    ↖release2       ↖feature3
 develop ────●──────●──────●───────────────●──────────────▶
               ↖feature1    ↖feature2       ↖feature3
 ```
