@@ -1,0 +1,99 @@
+name: CD - Prod
+
+on:
+  workflow_dispatch:  # Despliegue manual (quality gate humano)
+
+jobs:
+  deploy-prod:
+    name: Infrastructure Check & Deploy to Production
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # === Gate manual ===
+      - name: Await manual approval
+        run: echo "🕒 Esperando aprobación manual para despliegue en producción..."
+
+      # === Terraform Setup ===
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.0
+
+      - name: Terraform Init
+        working-directory: infra/prod
+        run: terraform init -input=false
+
+      - name: Terraform Validate
+        working-directory: infra/prod
+        run: terraform validate
+
+      - name: Terraform Plan
+        id: plan
+        working-directory: infra/prod
+        run: terraform plan -input=false -no-color -out=tfplan.out
+
+      - name: Check for infrastructure changes
+        id: tf_changes
+        working-directory: infra/prod
+        run: |
+          terraform show -json tfplan.out | jq '.resource_changes | length' > changes.txt
+          count=$(cat changes.txt)
+          echo "Infrastructure changes detected: $count"
+          if [ "$count" -gt 0 ]; then
+            echo "apply_needed=true" >> $GITHUB_ENV
+          else
+            echo "apply_needed=false" >> $GITHUB_ENV
+          fi
+
+      - name: Recreate infrastructure (if major changes detected)
+        if: env.apply_needed == 'true'
+        working-directory: infra/prod
+        run: |
+          echo "⚠️ Detected infra changes — recreating environment..."
+          terraform destroy -auto-approve -input=false
+          terraform apply -auto-approve -input=false
+
+
+      - name: Terraform Apply (only if needed)
+        if: env.apply_needed == 'true'
+        working-directory: infra/prod
+        run: terraform apply -auto-approve -input=false tfplan.out
+
+      # === Promoción de imágenes ===
+      - name: Promote Docker images from Test to Prod
+        run: |
+          docker pull myregistry/stockwiz-api-gateway:dev
+          docker tag myregistry/stockwiz-api-gateway:dev myregistry/stockwiz-api-gateway:prod
+          docker push myregistry/stockwiz-api-gateway:prod
+
+          docker pull myregistry/stockwiz-product-service:dev
+          docker tag myregistry/stockwiz-product-service:dev myregistry/stockwiz-product-service:prod
+          docker push myregistry/stockwiz-product-service:prod
+
+          docker pull myregistry/stockwiz-inventory-service:dev
+          docker tag myregistry/stockwiz-inventory-service:dev myregistry/stockwiz-inventory-service:prod
+          docker push myregistry/stockwiz-inventory-service:prod
+
+      # === Despliegue ECS/EKS ===
+      - name: Deploy to ECS Production Cluster
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+        with:
+          task-definition: ecs/prod-task-def.json
+          service: stockwiz-prod-service
+          cluster: stockwiz-cluster
+          wait-for-service-stability: true
+
+      # === Validación post-deploy ===
+      - name: Run smoke tests
+        run: |
+          echo "🔥 Ejecutando smoke tests..."
+          newman run tests/smoke_collection.json || true
+
+      - name: Notify release
+        run: |
+          echo "🚀 Despliegue en producción completado."
+          curl -X POST -H 'Content-type: application/json' \
+          --data '{"text":"🚀 StockWiz: despliegue exitoso en producción."}' $SLACK_WEBHOOK

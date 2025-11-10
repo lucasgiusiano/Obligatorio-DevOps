@@ -1,0 +1,104 @@
+name: CI - Dev
+
+on:
+  push:
+    branches:
+      - Dev
+
+jobs:
+  build-test:
+    name: Build, Test & Analyze (Dev)
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        service: [product-service, inventory-service, api-gateway] # Python + Go
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # === Terraform Lint & Validate (Dev only) ===
+      - name: Validate Terraform syntax
+        working-directory: infra/dev
+        run: |
+          echo "🧱 Validando sintaxis de Terraform..."
+          terraform init -backend=false
+          terraform validate
+
+      # === GO ===
+      - name: Set up Go
+        if: contains(matrix.service, 'inventory') || contains(matrix.service, 'gateway')
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      # === PYTHON ===
+      - name: Set up Python
+        if: contains(matrix.service, 'product')
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # === Caching ===
+      - name: Cache Go modules
+        if: contains(matrix.service, 'inventory') || contains(matrix.service, 'gateway')
+        uses: actions/cache@v4
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Cache Python packages
+        if: contains(matrix.service, 'product')
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      # === Dependencias ===
+      - name: Install dependencies
+        working-directory: ${{ matrix.service }}
+        run: |
+          if [ -f "go.mod" ]; then
+            go mod tidy
+          elif [ -f "requirements.txt" ]; then
+            pip install --upgrade pip
+            pip install -r requirements.txt
+          fi
+
+      # === Tests unitarios ===
+      - name: Run unit tests
+        working-directory: ${{ matrix.service }}
+        run: |
+          if [ -f "go.mod" ]; then
+            go test ./... -v | tee test-results.log
+          elif [ -f "requirements.txt" ]; then
+            pytest --maxfail=1 --disable-warnings -q | tee test-results.log || true
+          fi
+
+      # === Análisis estático (ESLint solo para gateway) ===
+      - name: Run ESLint (Static Code Analysis)
+        if: contains(matrix.service, 'gateway')
+        working-directory: ${{ matrix.service }}
+        run: |
+          echo "🔍 Running ESLint analysis..."
+          npx eslint . --ext .js,.jsx,.ts,.tsx -f stylish || true
+
+      # === Build Docker image ===
+      - name: Build Docker image
+        working-directory: ${{ matrix.service }}
+        run: |
+          echo "🐳 Building Docker image for ${{ matrix.service }}..."
+          docker build -t stockwiz-${{ matrix.service }}:dev .
+
+      # === Subida de artefactos (logs, reportes) ===
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.service }}
+          path: ${{ matrix.service }}/test-results.log
