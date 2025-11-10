@@ -80,13 +80,18 @@ jobs:
             pytest --maxfail=1 --disable-warnings -q | tee test-results.log || true
           fi
 
-      # === Análisis estático (ESLint solo para gateway) ===
-      - name: Run ESLint (Static Code Analysis)
-        if: contains(matrix.service, 'gateway')
-        working-directory: ${{ matrix.service }}
-        run: |
-          echo "🔍 Running ESLint analysis..."
-          npx eslint . --ext .js,.jsx,.ts,.tsx -f stylish || true
+      # === Análisis estático (SonarQube) ===
+      - name: Static code analysis (SonarQube)
+        uses: SonarSource/sonarqube-scan-action@v2
+        with:
+          projectBaseDir: ${{ matrix.service }}
+          args: >
+            -Dsonar.projectKey=StockWiz-${{ matrix.service }}
+            -Dsonar.sources=.
+            -Dsonar.host.url=${{ secrets.SONAR_HOST_URL }}
+            -Dsonar.qualitygate.wait=true
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
       # === Build Docker image ===
       - name: Build Docker image
