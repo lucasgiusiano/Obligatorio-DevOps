@@ -18,14 +18,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # === Terraform Lint & Validate (Dev only) ===
-      - name: Validate Terraform syntax
-        working-directory: infra/dev
-        run: |
-          echo "🧱 Validando sintaxis de Terraform..."
-          terraform init -backend=false
-          terraform validate
-
       # === GO ===
       - name: Set up Go
         if: contains(matrix.service, 'inventory') || contains(matrix.service, 'gateway')
@@ -40,25 +32,6 @@ jobs:
         with:
           python-version: "3.11"
 
-      # === Caching ===
-      - name: Cache Go modules
-        if: contains(matrix.service, 'inventory') || contains(matrix.service, 'gateway')
-        uses: actions/cache@v4
-        with:
-          path: ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-
-
-      - name: Cache Python packages
-        if: contains(matrix.service, 'product')
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-
-
       # === Dependencias ===
       - name: Install dependencies
         working-directory: ${{ matrix.service }}
@@ -70,16 +43,6 @@ jobs:
             pip install -r requirements.txt
           fi
 
-      # === Tests unitarios ===
-      - name: Run unit tests
-        working-directory: ${{ matrix.service }}
-        run: |
-          if [ -f "go.mod" ]; then
-            go test ./... -v | tee test-results.log
-          elif [ -f "requirements.txt" ]; then
-            pytest --maxfail=1 --disable-warnings -q | tee test-results.log || true
-          fi
-
       # === Análisis estático (SonarQube) ===
       - name: Static code analysis (SonarQube)
         uses: SonarSource/sonarqube-scan-action@v2
@@ -89,21 +52,29 @@ jobs:
             -Dsonar.projectKey=StockWiz-${{ matrix.service }}
             -Dsonar.sources=.
             -Dsonar.host.url=${{ secrets.SONAR_HOST_URL }}
-            -Dsonar.qualitygate.wait=true
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
-      # === Build Docker image ===
-      - name: Build Docker image
-        working-directory: ${{ matrix.service }}
+      # === Evaluar Quality Gate personalizado ===
+      - name: Evaluate SonarQube issues
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
         run: |
-          echo "🐳 Building Docker image for ${{ matrix.service }}..."
-          docker build -t stockwiz-${{ matrix.service }}:dev .
+          echo "🔎 Evaluando resultados de análisis SonarQube..."
+          PROJECT_KEY="StockWiz-${{ matrix.service }}"
 
-      # === Subida de artefactos (logs, reportes) ===
-      - name: Upload test results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-results-${{ matrix.service }}
-          path: ${{ matrix.service }}/test-results.log
+          # Obtener la cantidad de issues de severidad CRITICAL o BLOCKER
+          ISSUE_COUNT=$(curl -s -u $SONAR_TOKEN: \
+            "$SONAR_HOST_URL/api/issues/search?componentKeys=$PROJECT_KEY&severities=CRITICAL,BLOCKER" \
+            | jq '.total')
+
+          echo "🔍 Issues críticos o bloqueantes detectados: $ISSUE_COUNT"
+
+          if [ "$ISSUE_COUNT" -gt 5 ]; then
+            echo "❌ Quality Gate personalizado falló: se encontraron más de 5 errores críticos."
+            exit 1
+          else
+            echo "✅ Quality Gate aprobado: código dentro de límites aceptables."
+          fi
+

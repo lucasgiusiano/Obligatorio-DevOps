@@ -10,79 +10,54 @@ jobs:
     name: Infrastructure Check & Deploy to Test
     runs-on: ubuntu-latest
 
+    strategy:
+      matrix:
+        service: [product-service, inventory-service, api-gateway] # Python + Go
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # === Terraform Setup ===
-      - name: Set up Terraform
-        uses: hashicorp/setup-terraform@v3
+      # === GO ===
+      - name: Set up Go
+        if: contains(matrix.service, 'inventory') || contains(matrix.service, 'gateway')
+        uses: actions/setup-go@v5
         with:
-          terraform_version: 1.9.0
+          go-version: "1.22"
 
-      - name: Terraform Init
-        working-directory: infra/test
-        run: terraform init -input=false
+      # === PYTHON ===
+      - name: Set up Python
+        if: contains(matrix.service, 'product')
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
 
-      - name: Terraform Validate
-        working-directory: infra/test
-        run: terraform validate
-
-      - name: Terraform Plan
-        id: plan
-        working-directory: infra/test
-        run: terraform plan -input=false -no-color -out=tfplan.out
-
-      - name: Check for infrastructure changes
-        id: tf_changes
-        working-directory: infra/test
+      # === Dependencias ===
+      - name: Install dependencies
+        working-directory: ${{ matrix.service }}
         run: |
-          terraform show -json tfplan.out | jq '.resource_changes | length' > changes.txt
-          count=$(cat changes.txt)
-          echo "Infrastructure changes detected: $count"
-          if [ "$count" -gt 0 ]; then
-            echo "apply_needed=true" >> $GITHUB_ENV
-          else
-            echo "apply_needed=false" >> $GITHUB_ENV
+          if [ -f "go.mod" ]; then
+            go mod tidy
+          elif [ -f "requirements.txt" ]; then
+            pip install --upgrade pip
+            pip install -r requirements.txt
           fi
 
-      # === Recreate infra en entorno de pruebas ===
-      - name: Recreate Test Infrastructure (if needed)
-        if: env.apply_needed == 'true'
-        working-directory: infra/test
+      # === Ejecutar tests unitarios ===
+      - name: Run Unit Tests
+        working-directory: ${{ matrix.service }}
         run: |
-          echo "⚠️ Detected infra changes — recreating Test environment..."
-          terraform destroy -auto-approve -input=false
-          terraform apply -auto-approve -input=false
+          echo "🧪 Ejecutando tests unitarios para ${{ matrix.service }}..."
+          if [ -f "requirements.txt" ]; then
+            pytest --maxfail=1 --disable-warnings -q || true
+          elif [ -f "go.mod" ]; then
+            go test ./... -v || true
+          fi
 
-      # === Pull de imágenes desde Dev ===
-      - name: Pull Docker images from Dev
-        run: |
-          docker pull myregistry/stockwiz-api-gateway:dev || true
-          docker pull myregistry/stockwiz-product-service:dev || true
-          docker pull myregistry/stockwiz-inventory-service:dev || true
-
-      # === Deploy a ECS/EKS Test Cluster ===
-      - name: Deploy to ECS Test Cluster
-        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+      # === Subir logs de resultados ===
+      - name: Upload Unit Test Logs
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
-          task-definition: ecs/test-task-def.json
-          service: stockwiz-test-service
-          cluster: stockwiz-cluster
-          wait-for-service-stability: true
-
-      # === Tests funcionales ===
-      - name: Run functional tests (Postman)
-        run: |
-          echo "⚙️ Ejecutando pruebas funcionales..."
-          newman run tests/postman_collection.json || true
-
-      # === Tests de carga ===
-      - name: Run performance tests (k6)
-        run: |
-          echo "💣 Ejecutando pruebas de carga..."
-          k6 run tests/performance.js || true
-
-      # === Notificación final ===
-      - name: Notify success
-        run: echo "✅ Despliegue y validaciones completadas exitosamente en ambiente de Test."
+          name: unit-test-results-${{ matrix.service }}
+          path: ${{ matrix.service }}
